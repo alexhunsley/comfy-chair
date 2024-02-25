@@ -7,3 +7,6 @@
 
 WIP on custom nodes for ComfyUI.
 
+## PolySlider
+
+A visual slider control for combining three or more variables, particularly useful when you want to limit the total sum. Useful for e.g. controlling maximum weight using multiple Loras without them "fighting".
