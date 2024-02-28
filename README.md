@@ -10,3 +10,7 @@ WIP on custom nodes for ComfyUI.
 ## PolySlider
 
 A visual slider control for combining three or more variables, particularly useful when you want to limit the total sum. Useful for e.g. controlling maximum weight using multiple Loras without them "fighting".
+
+## Ghost note
+
+Idea: a simple note node that won't appear in the saved json inside a saved png (is this possible?).
