@@ -1,0 +1,220 @@
+#version 300 es
+
+precision highp float;
+precision highp sampler2D;
+
+in vec2 uv;
+out vec4 out_color;
+
+uniform vec2 u_resolution;
+uniform float u_time;
+uniform vec4 u_mouse;
+uniform sampler2D u_textures[16];
+
+// nodes layout radius.
+// 0.5 just about fills picture vertically with the node placement.
+float r = .4;
+
+// equi tri, flat edge along x direction.
+//
+//    1
+//   2 3
+//
+
+// next time:
+// do the linear thing: perp dist to a node based on the norm to opposite edge.
+//
+
+// (these don't have to be units)
+const vec2 vertices[3] = vec2[3](
+    vec2(0.0, 1.1547),    // A
+    vec2(-1.0, -0.57735),  // B
+    vec2(1.0, -0.57735)    // C
+);
+
+const float cos30 = 0.86602540378;
+const float sqrt3 = 1.73205080757;
+const float sqrt12 = 3.46410161514;
+
+// these must all be unit vecs.
+const vec2 bisectors[3] = vec2[3](
+    vec2(0., -1.), // bisec(A) = unit(AB+AC)
+    vec2(3.0, sqrt3) / sqrt12,   // bisec(B) = unit(BA+BC) = (A-B + C-B) = (1., sqrt(3.0)) + (2.0, 0.0) = (3.0, sqrt(3.0))
+    vec2(-3.0, sqrt3) / sqrt12   // etc
+);
+
+vec2 rotate(vec2 v, float angle) {
+    float cs = cos(angle);
+    float sn = sin(angle);
+    return vec2(cs * v.x  -  sn * v.y,
+                sn * v.x  +  cs * v.y);
+}
+
+float lineSegment(vec2 p, vec2 a, vec2 b) {
+    float thickness = 1.0/50.0;
+
+    vec2 pa = p - a;
+    vec2 ba = b - a;
+
+    float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
+    // ????????
+    float idk = length(pa - ba*h);
+
+    return 1.0 - smoothstep(0.0, thickness, idk);
+}
+
+float rotMult = -1.5;
+
+float angle() {
+    return rotMult * u_time;
+}
+
+// takes a raw uv (0.0->1.0 with no aspect correction)
+vec2[3] make_from_abc_vecs(vec2 uv) {
+
+    // w>h: = (>1, 1)
+    // w<h: = (1, >1)
+    vec2 aspect = u_resolution.x > u_resolution.y 
+        ? vec2(u_resolution.x / u_resolution.y, 1.0)
+        : vec2(1.0, u_resolution.y / u_resolution.x);  
+
+    // centre coord pre-aspect-fix.
+    // we change y a bit to centre the triangle.
+    vec2 uv_centre = vec2(0.5, 0.4);
+
+    // centres uv origin on middle of viewport, and expands uv in x or y
+    // dir to preserve on-screen aspect
+    vec2 uv_c = (uv - uv_centre) * aspect;
+
+    // A to uv
+    // So these amounts will now be correct due to aspect adjustment,
+    // and triangle should be correct proprtion on-screen
+    float angle = angle();
+    vec2 Auv = uv_c - r * rotate(vertices[0], angle);
+    vec2 Buv = uv_c - r * rotate(vertices[1], angle);
+    vec2 Cuv = uv_c - r * rotate(vertices[2], angle);
+
+    return vec2[3](Auv, Buv, Cuv);
+}
+
+bool is_in_triangle(vec2[3] node_to_uv_vecs) { //, vec3 mags) {
+
+    float angle = angle(); 
+
+    // a.b = |a| |b| cos t
+    // checking any two of the three is enough.
+    float cosTForA = dot(node_to_uv_vecs[0], rotate(bisectors[0], angle)) / length(node_to_uv_vecs[0]); // bisectors are already unitary
+    float cosTForB = dot(node_to_uv_vecs[1], rotate(bisectors[1], angle)) / length(node_to_uv_vecs[1]);
+
+    return (cosTForA > cos30 && cosTForB > cos30);
+}
+
+// a.b = |a| |b| cos t
+
+void main(){
+    // a = w/h.
+    // so here aspect vec2 = (>1, 1) for w>h layouts.
+    vec2 aspect = vec2(u_resolution.x / u_resolution.y, 1.0);
+
+    // time multipler (higher = faster changes)
+    float tMult = 10.;
+    float tMult2 = 1.;
+
+    // area of effect radii.
+    // we adjust by a reference value of r=0.25 so we can
+    // adjust r and the relative swellings are the same, comparatively.
+    // float radii_offset = 1.0 * (sin(tMult2 * u_time) + 1.0) / 2.0;
+    float radii_offset = 0.0;
+    float smallest_radius = (0.15 + radii_offset) * (r / 0.25);
+    // float largest_radius = (0.4 + radii_offset) * (r / 0.25);
+    float largest_radius = (0.15 + radii_offset) * (r / 0.25);
+
+    // cycled phasing effect for fun. Put 0.0 to disable.
+    // float bump_phase = 2.0 / 3.0 * 3.1415927;
+    float bump_phase = 0.0;
+
+    vec3 multo = vec3(smallest_radius) + (vec3(largest_radius) - vec3(smallest_radius)) 
+        * vec3(
+            (sin(tMult * u_time) + 1.0) / 2.0, 
+            (sin(tMult * u_time + bump_phase) + 1.0) / 2.0,
+            (sin(tMult * u_time + bump_phase* 2.0) + 1.0) / 2.0);
+
+    // vec3 multo = vec3(1./3.);
+
+    // vec2 uv_a = vec2(uv.x / aspect.x, uv.y);
+
+    // w>h layouts: aspect = (>1, 1), so this multiplies up the uv.x max to 0.0 -> (>1). y is still 0.0->1.0.
+    vec2 uv_a = uv * aspect;
+
+    // if true, make the colour (corner var) weights always sum the same amount (1)
+    bool adjust_weights = true;
+    // target total sum of weights after adjustment, when enabled.
+    float adjust_weights_sum = 1.;
+
+    // adjust_weights = false;
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // mouse in triangle?
+
+    // normalise mouse from coords to 0.0->1.0 range, reversing the Y.
+    // (this is NOT aspect fixing!)
+    vec2 mouse_norm = vec2(u_mouse.x/u_resolution.x, 1.0 - u_mouse.y/u_resolution.y);
+
+    // vecs from triangle nodes to mouse uv.
+    vec2[3] mouse_vecs_from_nodes = make_from_abc_vecs(mouse_norm);
+
+    vec3 mouse_mags = vec3(length(mouse_vecs_from_nodes[0]), length(mouse_vecs_from_nodes[1]), length(mouse_vecs_from_nodes[2]));
+
+    bool mouse_in_triangle = is_in_triangle(mouse_vecs_from_nodes); //, mouse_mags);
+
+// surely you want count here (array len), not length?!
+    // vec3 corner_to_uv_mags_mouse = mouse_mags * (adjust_weights ? min(1., adjust_weights_sum / length(mouse_mags)) : 1.0);
+    // vec3 corner_to_uv_mags_mouse = mouse_mags * (adjust_weights ? adjust_weights_sum / (mouse_mags.x + mouse_mags.y + mouse_mags.z) : 1.0);
+    vec3 corner_to_uv_mags_mouse = mouse_mags / (r * 8.35);
+
+    vec3 mouse_col = vec3(adjust_weights_sum) - corner_to_uv_mags_mouse / multo;
+
+    multo = vec3(1.);
+
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    // colour for current uv pixel
+    vec2[3] vecs_from_nodes = make_from_abc_vecs(uv);
+
+    vec3 mags = vec3(length(vecs_from_nodes[0]), length(vecs_from_nodes[1]), length(vecs_from_nodes[2]));
+
+    bool in_triangle = is_in_triangle(vecs_from_nodes); //, mags); // herus for mask -- correct!
+    //  in_triangle = true;
+
+    // NOTE: using max 1 here so that we only ever reduce the mags, not increase! verify this idea later.
+    // vec3 corner_to_uv_mags = mags / (adjust_weights ? adjust_weights_sum * max(1., length(mags)) : 1.0);
+
+    // vec3 corner_to_uv_mags = mags * (adjust_weights ? min(1., adjust_weights_sum / length(mags)) : 1.0);
+
+    // mags been through the aspect fix due to make_from_abc_vecs above. Maybe we *don't* want it/
+    vec3 corner_to_uv_mags = mags;
+ 
+    float mask = in_triangle ? 1.0 : 0.2;
+
+    // problem!± yu haven't adjusted corner_to_uv_mags for thge aspect! gets done in 
+    // vec3 col = mask * (vec3(adjust_weights_sum) - corner_to_uv_mags / multo); // herus - for col bubbles - wrong!
+    vec3 col = mask * (vec3(1.) - corner_to_uv_mags / multo / adjust_weights_sum); // herus - for col bubbles - wrong!
+
+    // vec3 col = corner_to_uv_mags;
+
+    float yCoordLineA = mouse_col.x;
+    float yCoordLineB = mouse_col.y;
+    float yCoordLineC = mouse_col.z;
+    
+    // you want the mouse in triangle, not the current pixel!
+    float lineColMult = 2.;
+    float f_a = lineColMult * (mouse_in_triangle ? lineSegment(uv, vec2(0.0, yCoordLineA), vec2(0.3333, yCoordLineA)) : 0.);
+    float f_b = lineColMult * (mouse_in_triangle ? lineSegment(uv, vec2(0.3333, yCoordLineB), vec2(0.6666, yCoordLineB)) : 0.);
+    float f_c = lineColMult * (mouse_in_triangle ? lineSegment(uv, vec2(0.6666, yCoordLineC), vec2(1.0, yCoordLineC)) : 0.);
+
+    // out_color = vec4(col, 1.0);
+    out_color = (vec4(col, 1.0) 
+        + vec4(f_a, 0.0, 0.0, 1.0)
+        + vec4(0.0, f_b, 0.0, 1.0)
+        + vec4(0.0, 0.0, f_c, 1.0)
+        ); // * (mouse_in_triangle ? 2.0 : 1.0);
+}
