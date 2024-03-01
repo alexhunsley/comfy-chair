@@ -17,7 +17,7 @@ float rotMult = -0.0;
 
 // nodes layout radius.
 // 0.5 just about fills picture vertically with the node placement.
-float r = .4;
+float r = .5;
 
 // equi tri, flat edge along x direction.
 //
@@ -81,7 +81,7 @@ vec2[3] make_from_abc_vecs(vec2 uv) {
 
     // centre coord pre-aspect-fix.
     // we change y to centre the triangle appropriately when it's not rotating. 
-    vec2 uv_centre = vec2(0.5, (abs(rotMult) > 0.001) ? 0.5 : 0.5 - r * (0.5 / sqrt(3.)));
+    vec2 uv_centre = vec2(0.5, (abs(rotMult) > 0.001) ? 0.5 : 0.5 - r / 4.);
 
     // centres uv origin on middle of viewport, and expands uv in x or y9
     // dir to preserve on-screen aspect
