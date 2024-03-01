@@ -11,6 +11,10 @@ uniform float u_time;
 uniform vec4 u_mouse;
 uniform sampler2D u_textures[16];
 
+// set to 0 to disable rotation
+float rotMult = -0.0;
+// float rotMult = -1.2;
+
 // nodes layout radius.
 // 0.5 just about fills picture vertically with the node placement.
 float r = .4;
@@ -57,13 +61,10 @@ float lineSegment(vec2 p, vec2 a, vec2 b) {
     vec2 ba = b - a;
 
     float h = clamp( dot(pa,ba)/dot(ba,ba), 0.0, 1.0 );
-    // ????????
-    float idk = length(pa - ba*h);
+    float dist = length(pa - ba*h);
 
-    return 1.0 - smoothstep(0.0, thickness, idk);
+    return 1.0 - smoothstep(0.0, thickness, dist);
 }
-
-float rotMult = -1.5;
 
 float angle() {
     return rotMult * u_time;
@@ -79,8 +80,8 @@ vec2[3] make_from_abc_vecs(vec2 uv) {
         : vec2(1.0, u_resolution.y / u_resolution.x);  
 
     // centre coord pre-aspect-fix.
-    // we change y a bit to centre the triangle.
-    vec2 uv_centre = vec2(0.5, 0.4);
+    // we change y to centre the triangle appropriately when it's not rotating. 
+    vec2 uv_centre = vec2(0.5, (abs(rotMult) > 0.001) ? 0.5 : 0.5 - r * (0.5 / sqrt(3.)));
 
     // centres uv origin on middle of viewport, and expands uv in x or y
     // dir to preserve on-screen aspect
